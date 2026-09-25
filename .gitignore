@@ -1,0 +1,19 @@
+# Challenge data is large and must not be committed.
+student_resource/dataset/
+
+# Generated outputs and experiment artifacts.
+student_resource/output/
+output/
+artifacts/
+
+# Python environments and caches.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor and operating-system files.
+.DS_Store
+.idea/
+.vscode/
