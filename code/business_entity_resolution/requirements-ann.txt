@@ -1,0 +1,3 @@
+# Install the base requirements first. Kaggle GPU images already provide PyTorch.
+sentence-transformers==5.1.1
+faiss-cpu==1.12.0

@@ -174,6 +174,27 @@ def _evaluate(
     }
 
 
+def _ranked_candidates(candidates: pl.DataFrame, score_column: str) -> pl.DataFrame:
+    """Apply the same deterministic ordering used by the recall evaluator."""
+
+    return (
+        candidates.sort(
+            [
+                "target_id",
+                score_column,
+                "evidence_score",
+                "route_count",
+                "shared_keys",
+                "best_df",
+            ],
+            descending=[False, True, True, True, True, False],
+        )
+        .with_columns(
+            pl.col("target_id").cum_count().over("target_id").alias("target_rank")
+        )
+    )
+
+
 def _add_fuzzy_score(
     candidates: pl.DataFrame,
     train_dir: Path,
@@ -231,6 +252,7 @@ def run(
     address_qgram_df: int,
     sources: tuple[int, ...],
     top_ks: tuple[int, ...],
+    output_dir: Path | None = None,
 ) -> dict[str, object]:
     train_dir = dataset_dir / "train"
     s1 = _prepared_source(train_dir / "train_source1.tsv", "s1_id")
@@ -289,12 +311,31 @@ def run(
         fuzzy_result = _evaluate(
             fuzzy_candidates, truth, top_ks, score_column="fuzzy_score"
         )
+        candidate_file = None
+        if output_dir is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            candidate_path = output_dir / f"classical_candidates_S{source_number}.parquet"
+            _ranked_candidates(fuzzy_candidates, "fuzzy_score").filter(
+                pl.col("target_rank") <= max(top_ks)
+            ).select(
+                "s1_id",
+                "target_id",
+                "country",
+                "target_rank",
+                "fuzzy_score",
+                "evidence_score",
+                "route_count",
+                "shared_keys",
+                "best_df",
+            ).write_parquet(candidate_path, compression="zstd")
+            candidate_file = str(candidate_path)
         source_results.append(
             {
                 "source": f"S{source_number}",
                 "route_pair_rows_before_deduplication": evidence.height,
                 "retrieval_ranking": retrieval_result,
                 "fuzzy_ranking": fuzzy_result,
+                "candidate_file": candidate_file,
             }
         )
     return {
@@ -318,6 +359,11 @@ def main() -> None:
     parser.add_argument("--address-qgram-df", type=int, default=50)
     parser.add_argument("--sources", type=int, nargs="+", choices=(2, 3), default=[2, 3])
     parser.add_argument("--top-k", type=int, nargs="+", default=[1, 2, 3, 5, 10, 20])
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Optionally save top-K classical candidates as Parquet for ANN union evaluation",
+    )
     args = parser.parse_args()
     if not 1 <= args.sample_per_mille <= 10:
         parser.error("--sample-per-mille must be between 1 and 10")
@@ -329,6 +375,7 @@ def main() -> None:
         args.address_qgram_df,
         tuple(sorted(set(args.sources))),
         tuple(sorted(set(args.top_k))),
+        args.output_dir,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
 

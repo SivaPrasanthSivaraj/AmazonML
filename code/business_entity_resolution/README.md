@@ -38,6 +38,38 @@ Materialize, deduplicate, and rank the combined candidate routes on a determinis
 PYTHONPATH=../code/business_entity_resolution/src python -m ber.candidate_ranking --dataset-dir dataset
 ```
 
+Save those top-20 classical candidates, then benchmark multilingual dense
+retrieval on the same labeled targets. Dense retrieval always searches the full
+S1 country partition; only the query targets are sampled.
+
+```bash
+PYTHONPATH=../code/business_entity_resolution/src python -m ber.candidate_ranking \
+  --dataset-dir dataset --output-dir output/classical_candidates
+
+PYTHONPATH=../code/business_entity_resolution/src python -m ber.ann_retrieval \
+  --dataset-dir dataset \
+  --cache-dir artifacts/ann_cache \
+  --output-dir output/ann \
+  --classical-candidates-dir output/classical_candidates
+```
+
+The ANN experiment uses the MIT-licensed `intfloat/multilingual-e5-small` model
+at a pinned revision. Its three complementary views are business name, address,
+and a labeled combination of both fields. Embeddings are cached as float16 files
+per country/view, while cosine search is performed using normalized float32
+vectors. `flat` (the default) gives an exact-neighbour retrieval ceiling for the
+initial 0.1% validation experiment. After that ceiling is known, use
+`--index-type ivf --nlist 4096 --nprobe 64` to measure the speed/recall tradeoff
+of approximate retrieval before scaling to all targets.
+
+With `--search-backend auto`, flat search prefers GPU FAISS, falls back to exact
+PyTorch matrix search on CUDA, and uses CPU FAISS only when no CUDA backend is
+available. Reduce `--search-batch-size 128` if a smaller GPU runs out of memory.
+
+Install `requirements.txt` plus `requirements-ann.txt` in a GPU environment. If
+the environment already includes GPU-enabled FAISS, keep that build instead of
+replacing it with the CPU fallback in `requirements-ann.txt`.
+
 Run unit tests from `code/business_entity_resolution/`:
 
 ```bash
@@ -57,6 +89,16 @@ python -m ber.token_retrieval --dataset-dir dataset --summary-only
 python -m ber.qgram_retrieval --dataset-dir dataset
 
 python -m ber.candidate_ranking --dataset-dir dataset
+
+python -m ber.candidate_ranking `
+  --dataset-dir dataset `
+  --output-dir output\classical_candidates
+
+python -m ber.ann_retrieval `
+  --dataset-dir dataset `
+  --cache-dir artifacts\ann_cache `
+  --output-dir output\ann `
+  --classical-candidates-dir output\classical_candidates
 
 Set-Location ..\code\business_entity_resolution
 $env:PYTHONPATH = "src"
