@@ -1,0 +1,4 @@
+-r requirements.txt
+-r requirements-ann.txt
+lightgbm==4.6.0
+scikit-learn==1.7.2
